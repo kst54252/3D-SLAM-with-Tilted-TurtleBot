@@ -19,6 +19,8 @@ import rclpy
 from rclpy.duration import Duration
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from rclpy.qos import QoSProfile
+from rclpy.qos import ReliabilityPolicy
 from rclpy.qos import qos_profile_sensor_data
 from sensor_msgs.msg import LaserScan
 from sensor_msgs.msg import PointCloud2
@@ -97,7 +99,7 @@ class TiltedScanNode(Node):
         self._publisher = self.create_publisher(
             PointCloud2,
             self._pointcloud_topic,
-            qos_profile_sensor_data,
+            QoSProfile(depth=10, reliability=ReliabilityPolicy.RELIABLE),
         )
         self._subscription = self.create_subscription(
             LaserScan,
@@ -120,27 +122,27 @@ class TiltedScanNode(Node):
         cloud_msg = self._projector.projectLaser(scan_msg)
         source_frame = self._source_frame or scan_msg.header.frame_id
         cloud_msg.header.frame_id = source_frame
+
         if source_frame == self._target_frame:
-            cloud_msg.header.frame_id = self._target_frame
-            self._publisher.publish(cloud_msg)
-            return
+            transformed_cloud = cloud_msg
+        else:
+            try:
+                lookup_time = rclpy.time.Time()
+                if not self._use_latest_tf:
+                    lookup_time = rclpy.time.Time.from_msg(scan_msg.header.stamp)
 
-        try:
-            lookup_time = rclpy.time.Time()
-            if not self._use_latest_tf:
-                lookup_time = rclpy.time.Time.from_msg(scan_msg.header.stamp)
+                transform = self._tf_buffer.lookup_transform(
+                    self._target_frame,
+                    source_frame,
+                    lookup_time,
+                    timeout=self._tf_timeout,
+                )
+            except TransformException as exc:
+                self._warn_tf_failure(source_frame, exc)
+                return
 
-            transform = self._tf_buffer.lookup_transform(
-                self._target_frame,
-                source_frame,
-                lookup_time,
-                timeout=self._tf_timeout,
-            )
-        except TransformException as exc:
-            self._warn_tf_failure(source_frame, exc)
-            return
+            transformed_cloud = do_transform_cloud(cloud_msg, transform)
 
-        transformed_cloud = do_transform_cloud(cloud_msg, transform)
         if self._use_latest_tf:
             transformed_cloud.header.stamp = self.get_clock().now().to_msg()
         else:

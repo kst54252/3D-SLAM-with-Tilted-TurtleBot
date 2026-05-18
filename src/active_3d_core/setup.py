@@ -25,6 +25,7 @@ setup(
     entry_points={
         'console_scripts': [
             'keyboard_drive_node = active_3d_core.keyboard_drive_node:main',
+            'cmd_vel_watch_node = active_3d_core.cmd_vel_watch_node:main',
             'odom_tf_node = active_3d_core.odom_tf_node:main',
             'spin_once_node = active_3d_core.spin_once_node:main',
             'tilted_scan_node = active_3d_core.tilted_scan_node:main',

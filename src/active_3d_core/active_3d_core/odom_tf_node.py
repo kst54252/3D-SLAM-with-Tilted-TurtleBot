@@ -67,6 +67,7 @@ class OdomTfNode(Node):
         self._z = self._initial_z
         self._rotation = Quaternion()
         self._rotation.w = 1.0
+        self._latest_stamp = None
 
         self._tf_broadcaster = TransformBroadcaster(self)
         self._subscription = self.create_subscription(
@@ -88,12 +89,15 @@ class OdomTfNode(Node):
         self._y = self._initial_y + msg.pose.pose.position.y
         self._z = self._initial_z + msg.pose.pose.position.z
         self._rotation = msg.pose.pose.orientation
+        self._latest_stamp = msg.header.stamp
 
     def _publish_transform(self):
         """Publish the latest pose as a TransformStamped."""
         transform = TransformStamped()
-        if self._stamp_with_current_time:
+        if self._stamp_with_current_time or self._latest_stamp is None:
             transform.header.stamp = self.get_clock().now().to_msg()
+        else:
+            transform.header.stamp = self._latest_stamp
         transform.header.frame_id = self._parent_frame
         transform.child_frame_id = self._child_frame
         transform.transform.translation.x = self._x

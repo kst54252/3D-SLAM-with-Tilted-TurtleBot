@@ -18,8 +18,12 @@
   <depend>urdf</depend>
   <depend>xacro</depend>
   <exec_depend>active_3d_core</exec_depend>
+  <exec_depend>active_3d_slam</exec_depend>
   <exec_depend>launch</exec_depend>
   <exec_depend>launch_ros</exec_depend>
+  <exec_depend>octomap_msgs</exec_depend>
+  <exec_depend>octomap_ros</exec_depend>
+  <exec_depend>octomap_server</exec_depend>
   <exec_depend>robot_state_publisher</exec_depend>
   <exec_depend>ros_gz_bridge</exec_depend>
   <exec_depend>ros_gz_sim</exec_depend>

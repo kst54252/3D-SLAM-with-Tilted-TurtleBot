@@ -231,6 +231,8 @@
       name="gz::sim::systems::DiffDrive">
       <left_joint>${namespace}wheel_left_joint</left_joint>
       <right_joint>${namespace}wheel_right_joint</right_joint>
+      <topic>/model/tilted_turtlebot/cmd_vel</topic>
+      <odom_topic>/model/tilted_turtlebot/odometry</odom_topic>
       <wheel_separation>0.160</wheel_separation>
       <wheel_radius>0.033</wheel_radius>
       <odom_publish_frequency>30</odom_publish_frequency>
