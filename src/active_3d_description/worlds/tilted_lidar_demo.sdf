@@ -45,7 +45,7 @@
           <geometry>
             <plane>
               <normal>0 0 1</normal>
-              <size>8 7</size>
+              <size>14 12</size>
             </plane>
           </geometry>
         </collision>
@@ -53,7 +53,7 @@
           <geometry>
             <plane>
               <normal>0 0 1</normal>
-              <size>8 7</size>
+              <size>14 12</size>
             </plane>
           </geometry>
           <material>
@@ -67,19 +67,19 @@
 
     <model name="north_wall">
       <static>true</static>
-      <pose>0 2.5 0.6 0 0 0</pose>
+      <pose>0 5.0 0.6 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
             <box>
-              <size>6.0 0.12 1.2</size>
+              <size>12.0 0.12 1.2</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>6.0 0.12 1.2</size>
+              <size>12.0 0.12 1.2</size>
             </box>
           </geometry>
           <material>
@@ -92,19 +92,19 @@
 
     <model name="south_wall">
       <static>true</static>
-      <pose>0 -2.5 0.6 0 0 0</pose>
+      <pose>0 -5.0 0.6 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
             <box>
-              <size>6.0 0.12 1.2</size>
+              <size>12.0 0.12 1.2</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>6.0 0.12 1.2</size>
+              <size>12.0 0.12 1.2</size>
             </box>
           </geometry>
           <material>
@@ -117,19 +117,19 @@
 
     <model name="east_wall">
       <static>true</static>
-      <pose>3.0 0 0.6 0 0 0</pose>
+      <pose>6.0 0 0.6 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
             <box>
-              <size>0.12 5.0 1.2</size>
+              <size>0.12 10.0 1.2</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>0.12 5.0 1.2</size>
+              <size>0.12 10.0 1.2</size>
             </box>
           </geometry>
           <material>
@@ -142,19 +142,19 @@
 
     <model name="west_wall">
       <static>true</static>
-      <pose>-3.0 0 0.6 0 0 0</pose>
+      <pose>-6.0 0 0.6 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
             <box>
-              <size>0.12 5.0 1.2</size>
+              <size>0.12 10.0 1.2</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>0.12 5.0 1.2</size>
+              <size>0.12 10.0 1.2</size>
             </box>
           </geometry>
           <material>
@@ -192,7 +192,7 @@
 
     <model name="low_block">
       <static>true</static>
-      <pose>1.95 1.35 0.25 0 0 -0.25</pose>
+      <pose>3.65 2.65 0.25 0 0 -0.25</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
@@ -217,7 +217,7 @@
 
     <model name="tall_block">
       <static>true</static>
-      <pose>-1.45 -1.1 0.55 0 0 0.2</pose>
+      <pose>-3.45 -2.85 0.55 0 0 0.2</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
@@ -242,7 +242,7 @@
 
     <model name="narrow_barrier">
       <static>true</static>
-      <pose>0.9 -1.45 0.35 0 0 1.5708</pose>
+      <pose>2.35 -3.6 0.35 0 0 1.5708</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
@@ -267,7 +267,7 @@
 
     <model name="round_pillar">
       <static>true</static>
-      <pose>-1.65 1.35 0.45 0 0 0</pose>
+      <pose>-3.85 3.25 0.45 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
@@ -287,6 +287,262 @@
           <material>
             <ambient>0.55 0.32 0.68 1</ambient>
             <diffuse>0.55 0.32 0.68 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="negative_y_long_wall">
+      <static>true</static>
+      <pose>-0.9 -4.0 0.4 0 0 0.35</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>2.4 0.22 0.8</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>2.4 0.22 0.8</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.70 0.42 0.18 1</ambient>
+            <diffuse>0.70 0.42 0.18 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="negative_y_short_wall">
+      <static>true</static>
+      <pose>3.35 -4.25 0.3 0 0 -0.55</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>1.35 0.22 0.6</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>1.35 0.22 0.6</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.72 0.50 0.20 1</ambient>
+            <diffuse>0.72 0.50 0.20 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="center_y_wide_block">
+      <static>true</static>
+      <pose>-2.2 -0.15 0.35 0 0 1.1</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>1.15 0.95 0.7</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>1.15 0.95 0.7</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.24 0.62 0.58 1</ambient>
+            <diffuse>0.24 0.62 0.58 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="center_y_tall_slab">
+      <static>true</static>
+      <pose>2.45 0.35 0.85 0 0 -0.75</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.38 1.35 1.7</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.38 1.35 1.7</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.23 0.46 0.74 1</ambient>
+            <diffuse>0.23 0.46 0.74 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="positive_y_cylinder_a">
+      <static>true</static>
+      <pose>-1.2 3.55 0.6 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <cylinder>
+              <radius>0.32</radius>
+              <length>1.2</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.32</radius>
+              <length>1.2</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.54 0.32 0.66 1</ambient>
+            <diffuse>0.54 0.32 0.66 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="positive_y_cylinder_b">
+      <static>true</static>
+      <pose>-0.35 3.05 0.4 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <cylinder>
+              <radius>0.22</radius>
+              <length>0.8</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.22</radius>
+              <length>0.8</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.64 0.42 0.74 1</ambient>
+            <diffuse>0.64 0.42 0.74 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="positive_y_cylinder_c">
+      <static>true</static>
+      <pose>0.55 3.65 0.75 0 0 0</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <cylinder>
+              <radius>0.26</radius>
+              <length>1.5</length>
+            </cylinder>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <cylinder>
+              <radius>0.26</radius>
+              <length>1.5</length>
+            </cylinder>
+          </geometry>
+          <material>
+            <ambient>0.46 0.30 0.62 1</ambient>
+            <diffuse>0.46 0.30 0.62 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="positive_y_overhead_bar">
+      <static>true</static>
+      <pose>3.25 3.35 1.25 0 0 0.2</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>1.7 0.28 0.3</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>1.7 0.28 0.3</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.32 0.50 0.34 1</ambient>
+            <diffuse>0.32 0.50 0.34 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="positive_y_left_post">
+      <static>true</static>
+      <pose>2.45 3.18 0.6 0 0 0.2</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.24 0.24 1.2</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.24 0.24 1.2</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.32 0.50 0.34 1</ambient>
+            <diffuse>0.32 0.50 0.34 1</diffuse>
+          </material>
+        </visual>
+      </link>
+    </model>
+
+    <model name="positive_y_right_post">
+      <static>true</static>
+      <pose>4.05 3.52 0.6 0 0 0.2</pose>
+      <link name="link">
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.24 0.24 1.2</size>
+            </box>
+          </geometry>
+        </collision>
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.24 0.24 1.2</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.32 0.50 0.34 1</ambient>
+            <diffuse>0.32 0.50 0.34 1</diffuse>
           </material>
         </visual>
       </link>

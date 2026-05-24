@@ -225,6 +225,62 @@
     </sensor>
   </gazebo>
 
+  <joint name="${namespace}explore_camera_joint" type="fixed">
+    <parent link="${namespace}base_link"/>
+    <child link="${namespace}explore_camera_link"/>
+    <origin xyz="0.055 0 0.190" rpy="0 0 0"/>
+  </joint>
+
+  <link name="${namespace}explore_camera_link">
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.035 0.055 0.030"/>
+      </geometry>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+      <geometry>
+        <box size="0.035 0.055 0.030"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.03"/>
+      <origin xyz="0 0 0"/>
+      <inertia ixx="0.00001" ixy="0.0" ixz="0.0" iyy="0.00001" iyz="0.0" izz="0.00001"/>
+    </inertial>
+  </link>
+
+  <joint name="${namespace}explore_camera_optical_joint" type="fixed">
+    <parent link="${namespace}explore_camera_link"/>
+    <child link="${namespace}explore_camera_optical_frame"/>
+    <origin xyz="0 0 0" rpy="-1.57079632679 0 -1.57079632679"/>
+  </joint>
+
+  <link name="${namespace}explore_camera_optical_frame"/>
+
+  <gazebo reference="${namespace}explore_camera_link">
+    <sensor name="explore_camera" type="camera">
+      <topic>/camera/image_raw</topic>
+      <update_rate>6</update_rate>
+      <visualize>true</visualize>
+      <always_on>true</always_on>
+      <camera>
+        <horizontal_fov>1.047</horizontal_fov>
+        <image>
+          <width>640</width>
+          <height>480</height>
+          <format>R8G8B8</format>
+        </image>
+        <clip>
+          <near>0.05</near>
+          <far>8.0</far>
+        </clip>
+      </camera>
+    </sensor>
+  </gazebo>
+
   <gazebo>
     <plugin
       filename="gz-sim-diff-drive-system"

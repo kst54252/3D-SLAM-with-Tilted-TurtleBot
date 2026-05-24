@@ -2,6 +2,8 @@
 #include <chrono>
 #include <cmath>
 #include <cstdint>
+#include <deque>
+#include <iterator>
 #include <limits>
 #include <memory>
 #include <optional>
@@ -21,6 +23,7 @@
 #include <octomap_msgs/conversions.h>
 #include <octomap_msgs/msg/octomap.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <std_msgs/msg/bool.hpp>
 #include <tf2_ros/buffer.h>
 #include <tf2_ros/transform_listener.h>
 #include <visualization_msgs/msg/marker.hpp>
@@ -117,10 +120,14 @@ public:
       declare_parameter<std::string>("cluster_marker_topic", "/frontier_clusters");
     candidate_pose_topic_ =
       declare_parameter<std::string>("candidate_pose_topic", "/frontier_candidate_poses");
+    scan_ready_topic_ =
+      declare_parameter<std::string>("scan_ready_topic", "/frontier_scan_ready");
     best_goal_topic_ =
       declare_parameter<std::string>("best_goal_topic", "/best_frontier_goal");
     best_goal_marker_topic_ =
       declare_parameter<std::string>("best_goal_marker_topic", "/best_frontier_goal_marker");
+    selected_goal_topic_ =
+      declare_parameter<std::string>("selected_goal_topic", "/visual_selected_frontier_goal");
     cmd_vel_topic_ = declare_parameter<std::string>(
       "cmd_vel_topic", "/model/tilted_turtlebot/cmd_vel");
 
@@ -139,10 +146,16 @@ public:
     information_gain_weight_ = declare_parameter<double>("information_gain_weight", 1.0);
     distance_weight_ = declare_parameter<double>("distance_weight", 0.35);
     auto_send_nav2_goal_ = declare_parameter<bool>("auto_send_nav2_goal", true);
+    use_visual_goal_selector_ = declare_parameter<bool>("use_visual_goal_selector", false);
     nav2_action_name_ = declare_parameter<std::string>("nav2_action_name", "navigate_to_pose");
     goal_update_period_sec_ = declare_parameter<double>("goal_update_period_sec", 8.0);
     goal_replan_distance_ = declare_parameter<double>("goal_replan_distance", 0.35);
-    stop_after_first_goal_ = declare_parameter<bool>("stop_after_first_goal", true);
+    stop_after_first_goal_ = declare_parameter<bool>("stop_after_first_goal", false);
+    goal_arrival_tolerance_ = declare_parameter<double>("goal_arrival_tolerance", 0.14);
+    best_unknown_gain_threshold_ = declare_parameter<double>("best_unknown_gain_threshold", 12.0);
+    low_voxel_gain_threshold_ = declare_parameter<int>("low_voxel_gain_threshold", 8);
+    max_exploration_time_sec_ = declare_parameter<double>("max_exploration_time_sec", 300.0);
+    max_goal_count_ = declare_parameter<int>("max_goal_count", 8);
     initial_spin_enabled_ = declare_parameter<bool>("initial_spin_enabled", true);
     initial_spin_start_delay_ = declare_parameter<double>("initial_spin_start_delay", 3.0);
     initial_spin_angle_ = declare_parameter<double>("initial_spin_angle", 6.283185307179586);
@@ -159,6 +172,8 @@ public:
       create_publisher<visualization_msgs::msg::MarkerArray>(cluster_marker_topic_, 1);
     candidate_pose_pub_ =
       create_publisher<geometry_msgs::msg::PoseArray>(candidate_pose_topic_, 1);
+    scan_ready_pub_ =
+      create_publisher<std_msgs::msg::Bool>(scan_ready_topic_, rclcpp::QoS(1).transient_local());
     best_goal_pub_ =
       create_publisher<geometry_msgs::msg::PoseStamped>(best_goal_topic_, 1);
     best_goal_marker_pub_ =
@@ -171,6 +186,9 @@ public:
     octomap_sub_ = create_subscription<octomap_msgs::msg::Octomap>(
       octomap_topic_, rclcpp::QoS(1).reliable(),
       std::bind(&FrontierExtractorNode::octomapCallback, this, std::placeholders::_1));
+    selected_goal_sub_ = create_subscription<geometry_msgs::msg::PoseStamped>(
+      selected_goal_topic_, rclcpp::QoS(1).reliable(),
+      std::bind(&FrontierExtractorNode::selectedGoalCallback, this, std::placeholders::_1));
     controller_transition_sub_ = create_subscription<lifecycle_msgs::msg::TransitionEvent>(
       "/controller_server/transition_event", 10,
       [this](const lifecycle_msgs::msg::TransitionEvent::SharedPtr msg) {
@@ -192,9 +210,15 @@ public:
     initial_spin_timer_ = create_wall_timer(
       std::chrono::milliseconds(50),
       std::bind(&FrontierExtractorNode::initialSpinTimerCallback, this));
+    goal_monitor_timer_ = create_wall_timer(
+      std::chrono::milliseconds(200),
+      std::bind(&FrontierExtractorNode::goalMonitorTimerCallback, this));
 
     if (!initial_spin_enabled_) {
       initial_spin_complete_ = true;
+      publishScanReady(true);
+    } else {
+      publishScanReady(false);
     }
 
     RCLCPP_INFO(
@@ -205,7 +229,7 @@ public:
 private:
   void initialSpinTimerCallback()
   {
-    if (!initial_spin_enabled_ || initial_spin_complete_) {
+    if (!initial_spin_enabled_ || initial_spin_complete_ || exploration_complete_) {
       return;
     }
 
@@ -213,9 +237,13 @@ private:
     if (!initial_spin_started_) {
       initial_spin_started_ = true;
       initial_spin_start_time_ = now;
+      publishScanReady(false);
+      if (exploration_start_time_.nanoseconds() == 0) {
+        exploration_start_time_ = now;
+      }
       RCLCPP_INFO(
         get_logger(),
-        "Initial scan spin will start in %.1f s", initial_spin_start_delay_);
+        "Scan rotation will start in %.1f s", initial_spin_start_delay_);
     }
 
     const double elapsed = (now - initial_spin_start_time_).seconds();
@@ -236,8 +264,17 @@ private:
     if (initial_spin_stop_count_ >= 10) {
       initial_spin_complete_ = true;
       initial_spin_complete_time_ = now;
-      RCLCPP_INFO(get_logger(), "Initial 360 scan complete; selecting a frontier goal.");
+      recordCompletedScanRotation();
+      publishScanReady(true);
+      RCLCPP_INFO(get_logger(), "360 scan complete; selecting a frontier goal.");
     }
+  }
+
+  void publishScanReady(bool ready)
+  {
+    std_msgs::msg::Bool message;
+    message.data = ready;
+    scan_ready_pub_->publish(message);
   }
 
   void publishVelocity(double linear_x, double angular_z)
@@ -246,6 +283,31 @@ private:
     command.linear.x = linear_x;
     command.angular.z = angular_z;
     cmd_vel_pub_->publish(command);
+  }
+
+  void goalMonitorTimerCallback()
+  {
+    if (!goal_active_ || !has_last_goal_ || exploration_complete_) {
+      return;
+    }
+
+    const std::string goal_frame = last_goal_.header.frame_id.empty() ?
+      std::string("odom") : last_goal_.header.frame_id;
+    const auto robot_position = lookupRobotPosition(goal_frame);
+    if (!robot_position) {
+      return;
+    }
+
+    const double distance_to_goal = distance2D(*robot_position, last_goal_.pose.position);
+    if (distance_to_goal > goal_arrival_tolerance_) {
+      return;
+    }
+
+    RCLCPP_INFO(
+      get_logger(),
+      "Robot is within %.2f m of the frontier goal; starting the next scan rotation.",
+      goal_arrival_tolerance_);
+    handleGoalReached(true);
   }
 
   void octomapCallback(const octomap_msgs::msg::Octomap::SharedPtr msg)
@@ -267,6 +329,8 @@ private:
       return;
     }
 
+    latest_voxel_count_ = countLeafVoxels(*tree);
+
     auto grid = createGrid(*tree);
     if (grid.width == 0 || grid.height == 0) {
       return;
@@ -285,7 +349,16 @@ private:
     publishFrontiers(*msg, grid);
     publishClusters(*msg, grid, candidates);
     publishCandidatePoses(*msg, candidates);
-    publishBestGoal(*msg, grid, best_goal);
+    if (use_visual_goal_selector_) {
+      if (has_visual_selected_goal_) {
+        publishVisualSelectedBestGoal(visual_selected_goal_);
+      } else {
+        publishBestGoal(*msg, grid, std::optional<ScoredCandidate>{});
+      }
+    } else {
+      publishBestGoal(*msg, grid, best_goal);
+    }
+    updateExplorationStopConditions(best_goal, candidates.size());
     maybeSendNav2Goal(*msg, best_goal);
 
     RCLCPP_INFO_THROTTLE(
@@ -293,6 +366,49 @@ private:
       "2D grid: %dx%d, frontier cells: %zu, candidates: %zu%s",
       grid.width, grid.height, countTrue(grid.frontier), candidates.size(),
       best_goal ? ", best goal selected" : "");
+  }
+
+  void selectedGoalCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
+  {
+    if (!use_visual_goal_selector_ || !auto_send_nav2_goal_) {
+      return;
+    }
+    if (exploration_complete_ || goal_active_) {
+      return;
+    }
+    if (!initial_spin_complete_) {
+      return;
+    }
+
+    const auto now = get_clock()->now();
+    if (initial_spin_enabled_ &&
+      (now - initial_spin_complete_time_).seconds() < post_spin_settle_sec_)
+    {
+      return;
+    }
+    if (last_goal_time_.nanoseconds() > 0 &&
+      (now - last_goal_time_).seconds() < goal_update_period_sec_)
+    {
+      return;
+    }
+
+    auto goal_pose = *msg;
+    if (goal_pose.header.frame_id.empty()) {
+      goal_pose.header.frame_id = "odom";
+    }
+    if (goal_pose.header.stamp.sec == 0 && goal_pose.header.stamp.nanosec == 0) {
+      goal_pose.header.stamp = now;
+    }
+    if (has_last_goal_ &&
+      distance2D(goal_pose.pose.position, last_goal_.pose.position) < goal_replan_distance_)
+    {
+      return;
+    }
+
+    visual_selected_goal_ = goal_pose;
+    has_visual_selected_goal_ = true;
+    publishVisualSelectedBestGoal(goal_pose);
+    sendNav2Goal(goal_pose, "visual selector", 0.0, 0.0, 0.0);
   }
 
   Grid2D createGrid(const octomap::OcTree & tree) const
@@ -739,6 +855,37 @@ private:
     best_goal_marker_pub_->publish(marker_array);
   }
 
+  void publishVisualSelectedBestGoal(const geometry_msgs::msg::PoseStamped & goal)
+  {
+    geometry_msgs::msg::PoseStamped stamped_goal = goal;
+    if (stamped_goal.header.frame_id.empty()) {
+      stamped_goal.header.frame_id = "odom";
+    }
+    if (stamped_goal.header.stamp.sec == 0 && stamped_goal.header.stamp.nanosec == 0) {
+      stamped_goal.header.stamp = get_clock()->now();
+    }
+    best_goal_pub_->publish(stamped_goal);
+
+    visualization_msgs::msg::MarkerArray marker_array;
+    marker_array.markers.push_back(
+      deleteAllMarker(stamped_goal.header.frame_id, stamped_goal.header.stamp));
+
+    visualization_msgs::msg::Marker marker;
+    marker.header = stamped_goal.header;
+    marker.ns = "best_frontier_goal";
+    marker.id = 0;
+    marker.type = visualization_msgs::msg::Marker::SPHERE;
+    marker.action = visualization_msgs::msg::Marker::ADD;
+    marker.pose = stamped_goal.pose;
+    marker.pose.position.z = floor_z_ + 0.18;
+    marker.scale.x = 0.25;
+    marker.scale.y = 0.25;
+    marker.scale.z = 0.25;
+    marker.color = makeColor(0.1F, 1.0F, 0.25F, 1.0F);
+    marker_array.markers.push_back(marker);
+    best_goal_marker_pub_->publish(marker_array);
+  }
+
   geometry_msgs::msg::PoseStamped makeGoalPose(
     const geometry_msgs::msg::Point & point,
     double yaw) const
@@ -751,11 +898,142 @@ private:
     return pose;
   }
 
+  void recordCompletedScanRotation()
+  {
+    const std::size_t previous_voxels =
+      has_last_spin_voxel_count_ ? last_spin_voxel_count_ : 0;
+    const std::size_t new_voxels =
+      latest_voxel_count_ > previous_voxels ? latest_voxel_count_ - previous_voxels : 0;
+
+    last_spin_voxel_count_ = latest_voxel_count_;
+    has_last_spin_voxel_count_ = true;
+    recent_spin_voxel_gains_.push_back(new_voxels);
+    while (recent_spin_voxel_gains_.size() > 3) {
+      recent_spin_voxel_gains_.pop_front();
+    }
+
+    RCLCPP_INFO(
+      get_logger(), "Scan rotation observed %zu new OctoMap leaf voxels.", new_voxels);
+  }
+
+  void requestNextScanRotation()
+  {
+    if (exploration_complete_) {
+      return;
+    }
+    if (!initial_spin_enabled_) {
+      initial_spin_complete_ = true;
+      publishScanReady(true);
+      return;
+    }
+
+    publishScanReady(false);
+    initial_spin_started_ = false;
+    initial_spin_complete_ = false;
+    initial_spin_stop_count_ = 0;
+    initial_spin_start_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+    initial_spin_complete_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+    has_last_goal_ = false;
+    has_visual_selected_goal_ = false;
+    last_goal_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+  }
+
+  void finishExploration(const std::string & reason)
+  {
+    if (exploration_complete_) {
+      return;
+    }
+
+    exploration_complete_ = true;
+    goal_active_ = false;
+    publishVelocity(0.0, 0.0);
+
+#ifdef ACTIVE_3D_SLAM_HAS_NAV2
+    if (current_goal_handle_) {
+      nav2_client_->async_cancel_goal(current_goal_handle_);
+      current_goal_handle_.reset();
+    }
+#endif
+
+    RCLCPP_INFO(get_logger(), "Exploration complete: %s", reason.c_str());
+  }
+
+  void handleGoalReached(bool cancel_nav2_goal)
+  {
+    goal_active_ = false;
+    publishVelocity(0.0, 0.0);
+
+#ifdef ACTIVE_3D_SLAM_HAS_NAV2
+    if (cancel_nav2_goal && current_goal_handle_) {
+      nav2_client_->async_cancel_goal(current_goal_handle_);
+      current_goal_handle_.reset();
+    }
+#else
+    (void)cancel_nav2_goal;
+#endif
+
+    if (stop_after_first_goal_) {
+      finishExploration("First frontier goal reached.");
+      return;
+    }
+
+    requestNextScanRotation();
+  }
+
+  void updateExplorationStopConditions(
+    const std::optional<ScoredCandidate> & best_goal,
+    std::size_t candidate_count)
+  {
+    if (exploration_complete_ || goal_active_ || !initial_spin_complete_) {
+      return;
+    }
+
+    const auto now = get_clock()->now();
+    if (exploration_start_time_.nanoseconds() == 0) {
+      exploration_start_time_ = now;
+    }
+    if (max_exploration_time_sec_ > 0.0 &&
+      exploration_start_time_.nanoseconds() > 0 &&
+      (now - exploration_start_time_).seconds() >= max_exploration_time_sec_)
+    {
+      finishExploration("Reached maximum exploration time.");
+      return;
+    }
+
+    if (max_goal_count_ > 0 && sent_goal_count_ >= max_goal_count_) {
+      finishExploration("Reached maximum exploration goal count.");
+      return;
+    }
+
+    if (candidate_count == 0 || !best_goal) {
+      finishExploration("No reachable frontier candidates remain.");
+      return;
+    }
+
+    if (best_goal->information_gain < best_unknown_gain_threshold_) {
+      finishExploration("Best unknown gain is below threshold.");
+      return;
+    }
+
+    const auto low_gain_limit =
+      static_cast<std::size_t>(std::max(0, low_voxel_gain_threshold_));
+    if (recent_spin_voxel_gains_.size() >= 3 &&
+      std::all_of(
+        recent_spin_voxel_gains_.begin(), recent_spin_voxel_gains_.end(),
+        [low_gain_limit](std::size_t gain) {return gain <= low_gain_limit;}))
+    {
+      finishExploration("Recent scan rotations added too few voxels.");
+    }
+  }
+
   void maybeSendNav2Goal(
     const octomap_msgs::msg::Octomap & msg,
     const std::optional<ScoredCandidate> & best_goal)
   {
     if (!best_goal || !auto_send_nav2_goal_) {
+      return;
+    }
+    if (use_visual_goal_selector_) {
       return;
     }
 
@@ -785,6 +1063,20 @@ private:
       return;
     }
 
+    auto goal_pose = makeGoalPose(best_goal->cluster.candidate, 0.0);
+    goal_pose.header = msg.header;
+    sendNav2Goal(
+      goal_pose, "frontier score", best_goal->score, best_goal->information_gain,
+      best_goal->distance);
+  }
+
+  void sendNav2Goal(
+    const geometry_msgs::msg::PoseStamped & goal_pose,
+    const std::string & source,
+    double score,
+    double information_gain,
+    double distance)
+  {
 #ifdef ACTIVE_3D_SLAM_HAS_NAV2
     if (!controller_active_ || !bt_navigator_active_) {
       RCLCPP_WARN_THROTTLE(
@@ -804,9 +1096,6 @@ private:
       return;
     }
 
-    auto goal_pose = makeGoalPose(best_goal->cluster.candidate, 0.0);
-    goal_pose.header = msg.header;
-
     NavigateToPose::Goal goal_msg;
     goal_msg.pose = goal_pose;
 
@@ -814,36 +1103,47 @@ private:
     options.goal_response_callback =
       [this](const GoalHandleNavigateToPose::SharedPtr & goal_handle) {
         goal_active_ = static_cast<bool>(goal_handle);
+        current_goal_handle_ = goal_handle;
         if (!goal_handle) {
           RCLCPP_WARN(get_logger(), "Nav2 rejected the frontier goal.");
+          if (!exploration_complete_) {
+            requestNextScanRotation();
+          }
         }
       };
     options.result_callback =
       [this](const GoalHandleNavigateToPose::WrappedResult & result) {
         goal_active_ = false;
+        current_goal_handle_.reset();
         RCLCPP_INFO(
           get_logger(), "Nav2 frontier goal finished with code %d",
           static_cast<int>(result.code));
-        if (stop_after_first_goal_ && result.code == rclcpp_action::ResultCode::SUCCEEDED) {
-          exploration_complete_ = true;
-          publishVelocity(0.0, 0.0);
-          RCLCPP_INFO(
-            get_logger(),
-            "First frontier goal reached; stopping automatic goal dispatch.");
+        if (exploration_complete_) {
+          return;
         }
+        if (result.code == rclcpp_action::ResultCode::SUCCEEDED) {
+          handleGoalReached(false);
+          return;
+        }
+        requestNextScanRotation();
       };
 
     nav2_client_->async_send_goal(goal_msg, options);
     last_goal_ = goal_pose;
     has_last_goal_ = true;
-    last_goal_time_ = now;
+    last_goal_time_ = get_clock()->now();
+    ++sent_goal_count_;
     RCLCPP_INFO(
       get_logger(),
-      "Sent best frontier goal to Nav2: x=%.2f y=%.2f score=%.2f gain=%.0f dist=%.2f",
-      goal_pose.pose.position.x, goal_pose.pose.position.y, best_goal->score,
-      best_goal->information_gain, best_goal->distance);
+      "Sent frontier goal %d to Nav2 from %s: x=%.2f y=%.2f score=%.2f gain=%.0f dist=%.2f",
+      sent_goal_count_, source.c_str(), goal_pose.pose.position.x, goal_pose.pose.position.y,
+      score, information_gain, distance);
 #else
-    (void)msg;
+    (void)goal_pose;
+    (void)source;
+    (void)score;
+    (void)information_gain;
+    (void)distance;
     RCLCPP_WARN_THROTTLE(
       get_logger(), *get_clock(), 5000,
       "Built without nav2_msgs; best goal is published but not sent to Nav2.");
@@ -876,13 +1176,20 @@ private:
     return static_cast<std::size_t>(std::count(values.begin(), values.end(), true));
   }
 
+  std::size_t countLeafVoxels(const octomap::OcTree & tree) const
+  {
+    return static_cast<std::size_t>(std::distance(tree.begin_leafs(), tree.end_leafs()));
+  }
+
   std::string octomap_topic_;
   std::string traversability_grid_topic_;
   std::string frontier_marker_topic_;
   std::string cluster_marker_topic_;
   std::string candidate_pose_topic_;
+  std::string scan_ready_topic_;
   std::string best_goal_topic_;
   std::string best_goal_marker_topic_;
+  std::string selected_goal_topic_;
   std::string cmd_vel_topic_;
   double floor_z_;
   double floor_clearance_;
@@ -899,10 +1206,16 @@ private:
   double information_gain_weight_;
   double distance_weight_;
   bool auto_send_nav2_goal_;
+  bool use_visual_goal_selector_;
   std::string nav2_action_name_;
   double goal_update_period_sec_;
   double goal_replan_distance_;
   bool stop_after_first_goal_;
+  double goal_arrival_tolerance_;
+  double best_unknown_gain_threshold_;
+  int low_voxel_gain_threshold_;
+  double max_exploration_time_sec_;
+  int max_goal_count_;
   bool initial_spin_enabled_;
   double initial_spin_start_delay_;
   double initial_spin_angle_;
@@ -911,34 +1224,46 @@ private:
   double frontier_alpha_;
   bool goal_active_{false};
   bool has_last_goal_{false};
+  bool has_visual_selected_goal_{false};
   bool controller_active_{false};
   bool bt_navigator_active_{false};
   bool exploration_complete_{false};
   bool initial_spin_started_{false};
   bool initial_spin_complete_{false};
   int initial_spin_stop_count_{0};
+  int sent_goal_count_{0};
+  std::size_t latest_voxel_count_{0};
+  std::size_t last_spin_voxel_count_{0};
+  bool has_last_spin_voxel_count_{false};
+  std::deque<std::size_t> recent_spin_voxel_gains_;
+  rclcpp::Time exploration_start_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time initial_spin_start_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time initial_spin_complete_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time last_goal_time_{0, 0, RCL_ROS_TIME};
   geometry_msgs::msg::PoseStamped last_goal_;
+  geometry_msgs::msg::PoseStamped visual_selected_goal_;
   tf2_ros::Buffer tf_buffer_;
   tf2_ros::TransformListener tf_listener_;
 
   rclcpp::Subscription<octomap_msgs::msg::Octomap>::SharedPtr octomap_sub_;
+  rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr selected_goal_sub_;
   rclcpp::Subscription<lifecycle_msgs::msg::TransitionEvent>::SharedPtr
     controller_transition_sub_;
   rclcpp::Subscription<lifecycle_msgs::msg::TransitionEvent>::SharedPtr
     bt_transition_sub_;
   rclcpp::TimerBase::SharedPtr initial_spin_timer_;
+  rclcpp::TimerBase::SharedPtr goal_monitor_timer_;
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_pub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr traversability_grid_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr frontier_marker_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr cluster_marker_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr candidate_pose_pub_;
+  rclcpp::Publisher<std_msgs::msg::Bool>::SharedPtr scan_ready_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr best_goal_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr best_goal_marker_pub_;
 #ifdef ACTIVE_3D_SLAM_HAS_NAV2
   rclcpp_action::Client<NavigateToPose>::SharedPtr nav2_client_;
+  GoalHandleNavigateToPose::SharedPtr current_goal_handle_;
 #endif
 };
 

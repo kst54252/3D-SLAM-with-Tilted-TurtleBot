@@ -29,6 +29,7 @@ setup(
             'odom_tf_node = active_3d_core.odom_tf_node:main',
             'spin_once_node = active_3d_core.spin_once_node:main',
             'tilted_scan_node = active_3d_core.tilted_scan_node:main',
+            'visual_goal_selector_node = active_3d_core.visual_goal_selector_node:main',
         ],
     },
 )
