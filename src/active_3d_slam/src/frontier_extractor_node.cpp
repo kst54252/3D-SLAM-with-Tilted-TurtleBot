@@ -152,6 +152,10 @@ public:
     goal_replan_distance_ = declare_parameter<double>("goal_replan_distance", 0.35);
     stop_after_first_goal_ = declare_parameter<bool>("stop_after_first_goal", false);
     goal_arrival_tolerance_ = declare_parameter<double>("goal_arrival_tolerance", 0.14);
+    use_distance_goal_monitor_ = declare_parameter<bool>("use_distance_goal_monitor", true);
+    goal_arrival_stable_count_required_ =
+      declare_parameter<int>("goal_arrival_stable_count_required", 8);
+    min_goal_active_sec_ = declare_parameter<double>("min_goal_active_sec", 2.0);
     best_unknown_gain_threshold_ = declare_parameter<double>("best_unknown_gain_threshold", 12.0);
     low_voxel_gain_threshold_ = declare_parameter<int>("low_voxel_gain_threshold", 8);
     max_exploration_time_sec_ = declare_parameter<double>("max_exploration_time_sec", 300.0);
@@ -287,7 +291,10 @@ private:
 
   void goalMonitorTimerCallback()
   {
-    if (!goal_active_ || !has_last_goal_ || exploration_complete_) {
+    if (
+      !use_distance_goal_monitor_ || !goal_active_ || !has_last_goal_ ||
+      exploration_complete_)
+    {
       return;
     }
 
@@ -300,13 +307,27 @@ private:
 
     const double distance_to_goal = distance2D(*robot_position, last_goal_.pose.position);
     if (distance_to_goal > goal_arrival_tolerance_) {
+      goal_arrival_stable_count_ = 0;
+      return;
+    }
+
+    const auto now = get_clock()->now();
+    if (last_goal_time_.nanoseconds() > 0 &&
+      (now - last_goal_time_).seconds() < min_goal_active_sec_)
+    {
+      goal_arrival_stable_count_ = 0;
+      return;
+    }
+
+    ++goal_arrival_stable_count_;
+    if (goal_arrival_stable_count_ < goal_arrival_stable_count_required_) {
       return;
     }
 
     RCLCPP_INFO(
       get_logger(),
-      "Robot is within %.2f m of the frontier goal; starting the next scan rotation.",
-      goal_arrival_tolerance_);
+      "Robot stayed within %.2f m of the frontier goal for %d samples; starting the next scan rotation.",
+      goal_arrival_tolerance_, goal_arrival_stable_count_);
     handleGoalReached(true);
   }
 
@@ -936,6 +957,7 @@ private:
     has_last_goal_ = false;
     has_visual_selected_goal_ = false;
     last_goal_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+    goal_arrival_stable_count_ = 0;
   }
 
   void finishExploration(const std::string & reason)
@@ -947,6 +969,7 @@ private:
     exploration_complete_ = true;
     goal_active_ = false;
     publishVelocity(0.0, 0.0);
+    goal_arrival_stable_count_ = 0;
 
 #ifdef ACTIVE_3D_SLAM_HAS_NAV2
     if (current_goal_handle_) {
@@ -1113,12 +1136,13 @@ private:
       };
     options.result_callback =
       [this](const GoalHandleNavigateToPose::WrappedResult & result) {
+        const bool was_goal_active = goal_active_;
         goal_active_ = false;
         current_goal_handle_.reset();
         RCLCPP_INFO(
           get_logger(), "Nav2 frontier goal finished with code %d",
           static_cast<int>(result.code));
-        if (exploration_complete_) {
+        if (exploration_complete_ || !was_goal_active) {
           return;
         }
         if (result.code == rclcpp_action::ResultCode::SUCCEEDED) {
@@ -1129,9 +1153,11 @@ private:
       };
 
     nav2_client_->async_send_goal(goal_msg, options);
+    publishScanReady(false);
     last_goal_ = goal_pose;
     has_last_goal_ = true;
     last_goal_time_ = get_clock()->now();
+    goal_arrival_stable_count_ = 0;
     ++sent_goal_count_;
     RCLCPP_INFO(
       get_logger(),
@@ -1212,6 +1238,9 @@ private:
   double goal_replan_distance_;
   bool stop_after_first_goal_;
   double goal_arrival_tolerance_;
+  bool use_distance_goal_monitor_;
+  int goal_arrival_stable_count_required_;
+  double min_goal_active_sec_;
   double best_unknown_gain_threshold_;
   int low_voxel_gain_threshold_;
   double max_exploration_time_sec_;
@@ -1236,6 +1265,7 @@ private:
   std::size_t last_spin_voxel_count_{0};
   bool has_last_spin_voxel_count_{false};
   std::deque<std::size_t> recent_spin_voxel_gains_;
+  int goal_arrival_stable_count_{0};
   rclcpp::Time exploration_start_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time initial_spin_start_time_{0, 0, RCL_ROS_TIME};
   rclcpp::Time initial_spin_complete_time_{0, 0, RCL_ROS_TIME};

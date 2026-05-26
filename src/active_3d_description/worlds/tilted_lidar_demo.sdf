@@ -45,7 +45,7 @@
           <geometry>
             <plane>
               <normal>0 0 1</normal>
-              <size>14 12</size>
+              <size>11.2 9.6</size>
             </plane>
           </geometry>
         </collision>
@@ -53,7 +53,7 @@
           <geometry>
             <plane>
               <normal>0 0 1</normal>
-              <size>14 12</size>
+              <size>11.2 9.6</size>
             </plane>
           </geometry>
           <material>
@@ -67,19 +67,19 @@
 
     <model name="north_wall">
       <static>true</static>
-      <pose>0 5.0 0.6 0 0 0</pose>
+      <pose>0 4.0 0.6 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
             <box>
-              <size>12.0 0.12 1.2</size>
+              <size>9.6 0.12 1.2</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>12.0 0.12 1.2</size>
+              <size>9.6 0.12 1.2</size>
             </box>
           </geometry>
           <material>
@@ -92,19 +92,19 @@
 
     <model name="south_wall">
       <static>true</static>
-      <pose>0 -5.0 0.6 0 0 0</pose>
+      <pose>0 -4.0 0.6 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
             <box>
-              <size>12.0 0.12 1.2</size>
+              <size>9.6 0.12 1.2</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>12.0 0.12 1.2</size>
+              <size>9.6 0.12 1.2</size>
             </box>
           </geometry>
           <material>
@@ -117,19 +117,19 @@
 
     <model name="east_wall">
       <static>true</static>
-      <pose>6.0 0 0.6 0 0 0</pose>
+      <pose>4.8 0 0.6 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
             <box>
-              <size>0.12 10.0 1.2</size>
+              <size>0.12 8.0 1.2</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>0.12 10.0 1.2</size>
+              <size>0.12 8.0 1.2</size>
             </box>
           </geometry>
           <material>
@@ -142,19 +142,19 @@
 
     <model name="west_wall">
       <static>true</static>
-      <pose>-6.0 0 0.6 0 0 0</pose>
+      <pose>-4.8 0 0.6 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
             <box>
-              <size>0.12 10.0 1.2</size>
+              <size>0.12 8.0 1.2</size>
             </box>
           </geometry>
         </collision>
         <visual name="visual">
           <geometry>
             <box>
-              <size>0.12 10.0 1.2</size>
+              <size>0.12 8.0 1.2</size>
             </box>
           </geometry>
           <material>
@@ -167,7 +167,7 @@
 
     <model name="center_column">
       <static>true</static>
-      <pose>0.2 0.6 0.45 0 0 0.45</pose>
+      <pose>0.16 0.48 0.45 0 0 0.45</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
@@ -192,7 +192,7 @@
 
     <model name="low_block">
       <static>true</static>
-      <pose>3.65 2.65 0.25 0 0 -0.25</pose>
+      <pose>2.92 2.12 0.25 0 0 -0.25</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
@@ -217,7 +217,7 @@
 
     <model name="tall_block">
       <static>true</static>
-      <pose>-3.45 -2.85 0.55 0 0 0.2</pose>
+      <pose>-2.76 -2.28 0.55 0 0 0.2</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
@@ -242,7 +242,7 @@
 
     <model name="narrow_barrier">
       <static>true</static>
-      <pose>2.35 -3.6 0.35 0 0 1.5708</pose>
+      <pose>1.88 -2.88 0.35 0 0 1.5708</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
@@ -267,7 +267,7 @@
 
     <model name="round_pillar">
       <static>true</static>
-      <pose>-3.85 3.25 0.45 0 0 0</pose>
+      <pose>-3.08 2.60 0.45 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
@@ -294,7 +294,7 @@
 
     <model name="negative_y_long_wall">
       <static>true</static>
-      <pose>-0.9 -4.0 0.4 0 0 0.35</pose>
+      <pose>-0.72 -3.20 0.4 0 0 0.35</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
@@ -319,7 +319,7 @@
 
     <model name="negative_y_short_wall">
       <static>true</static>
-      <pose>3.35 -4.25 0.3 0 0 -0.55</pose>
+      <pose>2.68 -3.40 0.3 0 0 -0.55</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
@@ -344,7 +344,7 @@
 
     <model name="center_y_wide_block">
       <static>true</static>
-      <pose>-2.2 -0.15 0.35 0 0 1.1</pose>
+      <pose>-1.76 -0.12 0.35 0 0 1.1</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
@@ -369,7 +369,7 @@
 
     <model name="center_y_tall_slab">
       <static>true</static>
-      <pose>2.45 0.35 0.85 0 0 -0.75</pose>
+      <pose>1.96 0.28 0.85 0 0 -0.75</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
@@ -394,7 +394,7 @@
 
     <model name="positive_y_cylinder_a">
       <static>true</static>
-      <pose>-1.2 3.55 0.6 0 0 0</pose>
+      <pose>-0.96 2.84 0.6 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
@@ -421,7 +421,7 @@
 
     <model name="positive_y_cylinder_b">
       <static>true</static>
-      <pose>-0.35 3.05 0.4 0 0 0</pose>
+      <pose>-0.28 2.44 0.4 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
@@ -448,7 +448,7 @@
 
     <model name="positive_y_cylinder_c">
       <static>true</static>
-      <pose>0.55 3.65 0.75 0 0 0</pose>
+      <pose>0.44 2.92 0.75 0 0 0</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
@@ -475,7 +475,7 @@
 
     <model name="positive_y_overhead_bar">
       <static>true</static>
-      <pose>3.25 3.35 1.25 0 0 0.2</pose>
+      <pose>2.60 2.68 1.25 0 0 0.2</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
@@ -500,7 +500,7 @@
 
     <model name="positive_y_left_post">
       <static>true</static>
-      <pose>2.45 3.18 0.6 0 0 0.2</pose>
+      <pose>1.96 2.54 0.6 0 0 0.2</pose>
       <link name="link">
         <collision name="collision">
           <geometry>
@@ -525,7 +525,7 @@
 
     <model name="positive_y_right_post">
       <static>true</static>
-      <pose>4.05 3.52 0.6 0 0 0.2</pose>
+      <pose>3.24 2.82 0.6 0 0 0.2</pose>
       <link name="link">
         <collision name="collision">
           <geometry>

@@ -207,12 +207,9 @@ class VisualGoalSelectorNode(Node):
                 candidate_count <= self.captured_candidate_count
             ):
                 return
-            has_more_candidates_than_last_capture = (
-                self.capture_once and candidate_count > self.captured_candidate_count)
-            if (
-                not has_more_candidates_than_last_capture and
-                now - self.last_selection_time < self.selection_cooldown_sec
-            ):
+            if self.capture_once and self.captured_once:
+                return
+            if now - self.last_selection_time < self.selection_cooldown_sec:
                 return
             self.selection_running = True
 
