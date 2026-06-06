@@ -28,6 +28,7 @@ setup(
             'cmd_vel_watch_node = active_3d_core.cmd_vel_watch_node:main',
             'odom_tf_node = active_3d_core.odom_tf_node:main',
             'spin_once_node = active_3d_core.spin_once_node:main',
+            'scan_beam_marker_node = active_3d_core.scan_beam_marker_node:main',
             'tilted_scan_node = active_3d_core.tilted_scan_node:main',
             'visual_goal_selector_node = active_3d_core.visual_goal_selector_node:main',
         ],

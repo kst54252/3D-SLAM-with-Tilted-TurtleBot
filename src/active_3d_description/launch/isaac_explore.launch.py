@@ -101,6 +101,24 @@ def generate_launch_description():
         }],
     )
 
+    scan_beam_marker_node = Node(
+        package='active_3d_core',
+        executable='scan_beam_marker_node',
+        name='scan_beam_marker_node',
+        output='screen',
+        parameters=[{
+            'scan_topic': scan_topic,
+            'marker_topic': '/scan_beams',
+            'source_frame': lidar_frame,
+            'target_frame': odom_frame,
+            'max_beams': 360,
+            'line_width': 0.035,
+            'alpha': 0.85,
+            'lifetime_sec': 1.0,
+            'use_sim_time': use_sim_time,
+        }],
+    )
+
     octomap_cloud_node = Node(
         package='active_3d_core',
         executable='tilted_scan_node',
@@ -143,6 +161,7 @@ def generate_launch_description():
         parameters=[{
             'octomap_topic': '/octomap_full',
             'traversability_grid_topic': '/traversability_grid',
+            'nav_obstacle_grid_topic': '/nav_obstacle_grid',
             'frontier_marker_topic': '/frontier_voxels',
             'cluster_marker_topic': '/frontier_clusters',
             'candidate_pose_topic': '/frontier_candidate_poses',
@@ -201,6 +220,7 @@ def generate_launch_description():
             'llm_request_debug_topic': '/llm_request_debug',
             'llm_response_debug_topic': '/llm_response_debug',
             'llm_exchange_debug_topic': '/llm_exchange_debug',
+            'llm_exchange_debug_chunk_topic': '/llm_exchange_debug_chunk',
             'cmd_vel_topic': cmd_vel_topic,
             'fixed_frame': odom_frame,
             'robot_frame': base_frame,
@@ -214,6 +234,8 @@ def generate_launch_description():
             'debug_image_dir': LaunchConfiguration('debug_image_dir'),
             'llm_api_url': LaunchConfiguration('llm_api_url'),
             'llm_model': LaunchConfiguration('llm_model'),
+            'llm_request_timeout_sec': LaunchConfiguration('llm_request_timeout_sec'),
+            'llm_debug_chunk_size': LaunchConfiguration('llm_debug_chunk_size'),
             'use_sim_time': use_sim_time,
         }],
     )
@@ -358,6 +380,16 @@ def generate_launch_description():
             description='Local vision model name passed to the LLM API.',
         ),
         DeclareLaunchArgument(
+            'llm_request_timeout_sec',
+            default_value='120.0',
+            description='Seconds to wait for the local vision LLM API response.',
+        ),
+        DeclareLaunchArgument(
+            'llm_debug_chunk_size',
+            default_value='2500',
+            description='Characters per /llm_exchange_debug_chunk message.',
+        ),
+        DeclareLaunchArgument(
             'nav2_startup_delay',
             default_value='8.0',
             description='Delay Nav2 lifecycle activation until Isaac TF is available.',
@@ -370,6 +402,7 @@ def generate_launch_description():
         robot_state_publisher,
         odom_tf_node,
         tilted_scan_node,
+        scan_beam_marker_node,
         octomap_cloud_node,
         octomap_server_node,
         frontier_extractor_node,

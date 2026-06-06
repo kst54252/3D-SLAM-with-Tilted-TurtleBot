@@ -55,6 +55,7 @@ class VisualGoalSelectorNode(Node):
         self.declare_parameter('llm_request_debug_topic', '/llm_request_debug')
         self.declare_parameter('llm_response_debug_topic', '/llm_response_debug')
         self.declare_parameter('llm_exchange_debug_topic', '/llm_exchange_debug')
+        self.declare_parameter('llm_exchange_debug_chunk_topic', '/llm_exchange_debug_chunk')
         self.declare_parameter('cmd_vel_topic', '/model/tilted_turtlebot/cmd_vel')
         self.declare_parameter('fixed_frame', 'odom')
         self.declare_parameter('robot_frame', 'base_footprint')
@@ -74,6 +75,7 @@ class VisualGoalSelectorNode(Node):
         self.declare_parameter('llm_api_url', 'http://localhost:11434/api/chat')
         self.declare_parameter('llm_model', 'gemma4:26b')
         self.declare_parameter('llm_request_timeout_sec', 20.0)
+        self.declare_parameter('llm_debug_chunk_size', 2500)
 
         self.candidate_pose_topic = self.get_parameter(
             'candidate_pose_topic').get_parameter_value().string_value
@@ -88,6 +90,8 @@ class VisualGoalSelectorNode(Node):
             'llm_response_debug_topic').get_parameter_value().string_value
         self.llm_exchange_debug_topic = self.get_parameter(
             'llm_exchange_debug_topic').get_parameter_value().string_value
+        self.llm_exchange_debug_chunk_topic = self.get_parameter(
+            'llm_exchange_debug_chunk_topic').get_parameter_value().string_value
         self.cmd_vel_topic = self.get_parameter('cmd_vel_topic').get_parameter_value().string_value
         self.fixed_frame = self.get_parameter('fixed_frame').get_parameter_value().string_value
         self.robot_frame = self.get_parameter('robot_frame').get_parameter_value().string_value
@@ -119,6 +123,9 @@ class VisualGoalSelectorNode(Node):
         self.llm_model = self.get_parameter('llm_model').get_parameter_value().string_value
         self.llm_request_timeout_sec = self.get_parameter(
             'llm_request_timeout_sec').get_parameter_value().double_value
+        self.llm_debug_chunk_size = max(
+            200,
+            self.get_parameter('llm_debug_chunk_size').get_parameter_value().integer_value)
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
@@ -142,6 +149,8 @@ class VisualGoalSelectorNode(Node):
             String, self.llm_response_debug_topic, debug_qos)
         self.llm_exchange_debug_pub = self.create_publisher(
             String, self.llm_exchange_debug_topic, debug_qos)
+        self.llm_exchange_debug_chunk_pub = self.create_publisher(
+            String, self.llm_exchange_debug_chunk_topic, debug_qos)
         self.create_subscription(
             PoseArray, self.candidate_pose_topic, self.candidates_callback, 1)
         self.create_subscription(
@@ -524,6 +533,19 @@ class VisualGoalSelectorNode(Node):
         if exchange_file:
             message.data = '\n'.join([message.data, '', f'full_exchange_text: {exchange_file}'])
         self.llm_exchange_debug_pub.publish(message)
+        self.publish_llm_exchange_chunks(message.data, status)
+
+    def publish_llm_exchange_chunks(self, text, status):
+        total = max(1, math.ceil(len(text) / self.llm_debug_chunk_size))
+        for index in range(total):
+            start = index * self.llm_debug_chunk_size
+            end = start + self.llm_debug_chunk_size
+            message = String()
+            message.data = '\n'.join([
+                f'========== LLM EXCHANGE CHUNK {index + 1}/{total}: {status} ==========',
+                text[start:end],
+            ])
+            self.llm_exchange_debug_chunk_pub.publish(message)
 
     def save_llm_debug_text(self, kind, text):
         try:

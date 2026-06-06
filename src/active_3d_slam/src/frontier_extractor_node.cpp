@@ -9,6 +9,7 @@
 #include <optional>
 #include <queue>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include <geometry_msgs/msg/point.hpp>
@@ -114,6 +115,8 @@ public:
     octomap_topic_ = declare_parameter<std::string>("octomap_topic", "/octomap_full");
     traversability_grid_topic_ =
       declare_parameter<std::string>("traversability_grid_topic", "/traversability_grid");
+    nav_obstacle_grid_topic_ =
+      declare_parameter<std::string>("nav_obstacle_grid_topic", "/nav_obstacle_grid");
     frontier_marker_topic_ =
       declare_parameter<std::string>("frontier_marker_topic", "/frontier_voxels");
     cluster_marker_topic_ =
@@ -169,7 +172,11 @@ public:
 
     cmd_vel_pub_ = create_publisher<geometry_msgs::msg::Twist>(cmd_vel_topic_, 10);
     traversability_grid_pub_ =
-      create_publisher<nav_msgs::msg::OccupancyGrid>(traversability_grid_topic_, 1);
+      create_publisher<nav_msgs::msg::OccupancyGrid>(
+      traversability_grid_topic_, rclcpp::QoS(1).transient_local());
+    nav_obstacle_grid_pub_ =
+      create_publisher<nav_msgs::msg::OccupancyGrid>(
+      nav_obstacle_grid_topic_, rclcpp::QoS(1).transient_local());
     frontier_marker_pub_ =
       create_publisher<visualization_msgs::msg::MarkerArray>(frontier_marker_topic_, 1);
     cluster_marker_pub_ =
@@ -360,13 +367,15 @@ private:
     fillKnownFreeAndOccupied(*tree, grid);
     inflateOccupied(grid);
     computeTraversableAndFrontier(grid);
-    const std::vector<Cluster> clusters = clusterFrontierCells(grid);
+    const auto robot_position = lookupRobotPosition(msg->header.frame_id);
+    const std::vector<Cluster> clusters = clusterFrontierCells(grid, robot_position);
     const auto scored_candidates = scoreCandidates(*msg, clusters);
     const auto candidates = limitCandidates(scored_candidates);
     const auto best_goal = candidates.empty() ?
       std::optional<ScoredCandidate>{} : std::optional<ScoredCandidate>{candidates.front()};
 
     publishTraversabilityGrid(*msg, grid);
+    publishNavObstacleGrid(*msg, grid);
     publishFrontiers(*msg, grid);
     publishClusters(*msg, grid, candidates);
     publishCandidatePoses(*msg, candidates);
@@ -581,8 +590,11 @@ private:
     }
   }
 
-  std::vector<Cluster> clusterFrontierCells(const Grid2D & grid) const
+  std::vector<Cluster> clusterFrontierCells(
+    const Grid2D & grid,
+    const std::optional<geometry_msgs::msg::Point> & robot_position) const
   {
+    const auto reachable = computeReachableTraversableCells(grid, robot_position);
     std::vector<bool> visited(grid.frontier.size(), false);
     std::vector<Cluster> clusters;
     constexpr int neighbor_offsets[8][2] = {
@@ -593,7 +605,7 @@ private:
     for (int y = 0; y < grid.height; ++y) {
       for (int x = 0; x < grid.width; ++x) {
         const int start_index = grid.index(x, y);
-        if (!grid.frontier[start_index] || visited[start_index]) {
+        if (!grid.frontier[start_index] || !reachable[start_index] || visited[start_index]) {
           continue;
         }
 
@@ -614,7 +626,9 @@ private:
               continue;
             }
             const int neighbor_index = grid.index(nx, ny);
-            if (!grid.frontier[neighbor_index] || visited[neighbor_index]) {
+            if (!grid.frontier[neighbor_index] || !reachable[neighbor_index] ||
+              visited[neighbor_index])
+            {
               continue;
             }
             visited[neighbor_index] = true;
@@ -634,6 +648,89 @@ private:
       clusters.begin(), clusters.end(),
       [](const Cluster & a, const Cluster & b) {return a.size > b.size;});
     return clusters;
+  }
+
+  std::vector<bool> computeReachableTraversableCells(
+    const Grid2D & grid,
+    const std::optional<geometry_msgs::msg::Point> & robot_position) const
+  {
+    std::vector<bool> reachable(grid.traversable.size(), false);
+    if (!robot_position) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Skipping frontier candidates because robot pose is unavailable for reachability check.");
+      return reachable;
+    }
+
+    const auto start = findNearestTraversableCell(grid, *robot_position);
+    if (!start) {
+      RCLCPP_WARN_THROTTLE(
+        get_logger(), *get_clock(), 5000,
+        "Skipping frontier candidates because no traversable cell is near the robot.");
+      return reachable;
+    }
+
+    constexpr int neighbor_offsets[4][2] = {{1, 0}, {-1, 0}, {0, 1}, {0, -1}};
+    std::queue<std::pair<int, int>> queue;
+    queue.push(*start);
+    reachable[grid.index(start->first, start->second)] = true;
+
+    while (!queue.empty()) {
+      const auto [cx, cy] = queue.front();
+      queue.pop();
+
+      for (const auto & offset : neighbor_offsets) {
+        const int nx = cx + offset[0];
+        const int ny = cy + offset[1];
+        if (!grid.inBounds(nx, ny)) {
+          continue;
+        }
+        const int neighbor_index = grid.index(nx, ny);
+        if (!grid.traversable[neighbor_index] || reachable[neighbor_index]) {
+          continue;
+        }
+        reachable[neighbor_index] = true;
+        queue.push({nx, ny});
+      }
+    }
+
+    return reachable;
+  }
+
+  std::optional<std::pair<int, int>> findNearestTraversableCell(
+    const Grid2D & grid,
+    const geometry_msgs::msg::Point & robot_position) const
+  {
+    const int robot_x = worldToCellX(grid, robot_position.x);
+    const int robot_y = worldToCellY(grid, robot_position.y);
+    if (grid.inBounds(robot_x, robot_y) && grid.traversable[grid.index(robot_x, robot_y)]) {
+      return std::make_pair(robot_x, robot_y);
+    }
+
+    const int search_radius =
+      std::max(1, static_cast<int>(std::ceil((robot_radius_ * 2.0) / grid.resolution)));
+    double best_distance_sq = std::numeric_limits<double>::max();
+    std::optional<std::pair<int, int>> best_cell;
+
+    for (int dy = -search_radius; dy <= search_radius; ++dy) {
+      for (int dx = -search_radius; dx <= search_radius; ++dx) {
+        const int x = robot_x + dx;
+        const int y = robot_y + dy;
+        if (!grid.inBounds(x, y) || !grid.traversable[grid.index(x, y)]) {
+          continue;
+        }
+        const auto center = grid.cellCenter(x, y, floor_z_);
+        const double cx = center.x - robot_position.x;
+        const double cy = center.y - robot_position.y;
+        const double distance_sq = cx * cx + cy * cy;
+        if (distance_sq < best_distance_sq) {
+          best_distance_sq = distance_sq;
+          best_cell = std::make_pair(x, y);
+        }
+      }
+    }
+
+    return best_cell;
   }
 
   Cluster makeCluster(
@@ -764,6 +861,35 @@ private:
     }
 
     traversability_grid_pub_->publish(occupancy_grid);
+  }
+
+  void publishNavObstacleGrid(
+    const octomap_msgs::msg::Octomap & msg,
+    const Grid2D & grid)
+  {
+    nav_msgs::msg::OccupancyGrid occupancy_grid;
+    occupancy_grid.header = msg.header;
+    occupancy_grid.info.resolution = static_cast<float>(grid.resolution);
+    occupancy_grid.info.width = static_cast<std::uint32_t>(grid.width);
+    occupancy_grid.info.height = static_cast<std::uint32_t>(grid.height);
+    occupancy_grid.info.origin.position.x = grid.origin_x;
+    occupancy_grid.info.origin.position.y = grid.origin_y;
+    occupancy_grid.info.origin.position.z = floor_z_;
+    occupancy_grid.info.origin.orientation.w = 1.0;
+    occupancy_grid.data.assign(grid.width * grid.height, -1);
+
+    for (int y = 0; y < grid.height; ++y) {
+      for (int x = 0; x < grid.width; ++x) {
+        const int index = grid.index(x, y);
+        if (grid.occupied[index]) {
+          occupancy_grid.data[index] = 100;
+        } else if (grid.known_free[index]) {
+          occupancy_grid.data[index] = 0;
+        }
+      }
+    }
+
+    nav_obstacle_grid_pub_->publish(occupancy_grid);
   }
 
   void publishFrontiers(
@@ -1209,6 +1335,7 @@ private:
 
   std::string octomap_topic_;
   std::string traversability_grid_topic_;
+  std::string nav_obstacle_grid_topic_;
   std::string frontier_marker_topic_;
   std::string cluster_marker_topic_;
   std::string candidate_pose_topic_;
@@ -1285,6 +1412,7 @@ private:
   rclcpp::TimerBase::SharedPtr goal_monitor_timer_;
   rclcpp::Publisher<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_pub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr traversability_grid_pub_;
+  rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr nav_obstacle_grid_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr frontier_marker_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr cluster_marker_pub_;
   rclcpp::Publisher<geometry_msgs::msg::PoseArray>::SharedPtr candidate_pose_pub_;

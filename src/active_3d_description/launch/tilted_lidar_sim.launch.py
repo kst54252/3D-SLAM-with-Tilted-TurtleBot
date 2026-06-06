@@ -11,7 +11,9 @@ from launch.actions import TimerAction
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
+from launch.substitutions import PythonExpression
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 import xacro
 
 
@@ -55,7 +57,10 @@ def generate_launch_description():
             'cmd_vel_topic': '/model/tilted_turtlebot/cmd_vel',
             'use_sim_time': LaunchConfiguration('use_sim_time'),
         }.items(),
-        condition=IfCondition(LaunchConfiguration('nav2')),
+        condition=IfCondition(PythonExpression([
+            "'", LaunchConfiguration('nav2'), "' == 'true' and '",
+            LaunchConfiguration('manual_explore'), "' != 'true'",
+        ])),
     )
 
     robot_state_publisher = Node(
@@ -72,13 +77,13 @@ def generate_launch_description():
         package='ros_gz_sim',
         executable='create',
         output='screen',
-        parameters=[{
-            'name': 'tilted_turtlebot',
-            'topic': '/robot_description',
-            'x': 1.1,
-            'y': 0.0,
-            'z': 0.02,
-        }],
+        arguments=[
+            '-name', 'tilted_turtlebot',
+            '-topic', '/robot_description',
+            '-x', '1.1',
+            '-y', '0.0',
+            '-z', '0.02',
+        ],
     )
 
     scan_bridge = Node(
@@ -137,6 +142,24 @@ def generate_launch_description():
         }],
     )
 
+    scan_beam_marker_node = Node(
+        package='active_3d_core',
+        executable='scan_beam_marker_node',
+        name='scan_beam_marker_node',
+        output='screen',
+        parameters=[{
+            'scan_topic': '/scan',
+            'marker_topic': '/scan_beams',
+            'source_frame': 'base_scan',
+            'target_frame': 'odom',
+            'max_beams': 360,
+            'line_width': 0.035,
+            'alpha': 0.85,
+            'lifetime_sec': 1.0,
+            'use_sim_time': LaunchConfiguration('use_sim_time'),
+        }],
+    )
+
     octomap_cloud_node = Node(
         package='active_3d_core',
         executable='tilted_scan_node',
@@ -180,6 +203,7 @@ def generate_launch_description():
         parameters=[{
             'octomap_topic': '/octomap_full',
             'traversability_grid_topic': '/traversability_grid',
+            'nav_obstacle_grid_topic': '/nav_obstacle_grid',
             'frontier_marker_topic': '/frontier_voxels',
             'cluster_marker_topic': '/frontier_clusters',
             'candidate_pose_topic': '/frontier_candidate_poses',
@@ -200,13 +224,17 @@ def generate_launch_description():
             'robot_frame': 'base_footprint',
             'information_gain_weight': 1.0,
             'distance_weight': 0.35,
-            'auto_send_nav2_goal': True,
+            'auto_send_nav2_goal': ParameterValue(PythonExpression([
+                "'", LaunchConfiguration('manual_explore'), "' != 'true'",
+            ]), value_type=bool),
             'use_visual_goal_selector': LaunchConfiguration('visual_goal_selector'),
             'selected_goal_topic': '/visual_selected_frontier_goal',
             'nav2_action_name': 'navigate_to_pose',
             'goal_update_period_sec': 8.0,
             'goal_replan_distance': 0.35,
-            'initial_spin_enabled': True,
+            'initial_spin_enabled': ParameterValue(PythonExpression([
+                "'", LaunchConfiguration('manual_explore'), "' != 'true'",
+            ]), value_type=bool),
             'initial_spin_start_delay': 3.0,
             'initial_spin_angle': 6.283185307179586,
             'initial_spin_angular_speed': 0.45,
@@ -229,7 +257,10 @@ def generate_launch_description():
         executable='visual_goal_selector_node',
         name='visual_goal_selector_node',
         output='screen',
-        condition=IfCondition(LaunchConfiguration('visual_goal_selector')),
+        condition=IfCondition(PythonExpression([
+            "'", LaunchConfiguration('visual_goal_selector'), "' == 'true' and '",
+            LaunchConfiguration('manual_explore'), "' != 'true'",
+        ])),
         parameters=[{
             'candidate_pose_topic': '/frontier_candidate_poses',
             'scan_ready_topic': '/frontier_scan_ready',
@@ -238,6 +269,7 @@ def generate_launch_description():
             'llm_request_debug_topic': '/llm_request_debug',
             'llm_response_debug_topic': '/llm_response_debug',
             'llm_exchange_debug_topic': '/llm_exchange_debug',
+            'llm_exchange_debug_chunk_topic': '/llm_exchange_debug_chunk',
             'cmd_vel_topic': '/model/tilted_turtlebot/cmd_vel',
             'fixed_frame': 'odom',
             'robot_frame': 'base_footprint',
@@ -251,6 +283,8 @@ def generate_launch_description():
             'debug_image_dir': LaunchConfiguration('debug_image_dir'),
             'llm_api_url': LaunchConfiguration('llm_api_url'),
             'llm_model': LaunchConfiguration('llm_model'),
+            'llm_request_timeout_sec': LaunchConfiguration('llm_request_timeout_sec'),
+            'llm_debug_chunk_size': LaunchConfiguration('llm_debug_chunk_size'),
             'use_sim_time': LaunchConfiguration('use_sim_time'),
         }],
     )
@@ -260,7 +294,10 @@ def generate_launch_description():
         executable='keyboard_drive_node',
         output='screen',
         emulate_tty=True,
-        condition=IfCondition(LaunchConfiguration('keyboard')),
+        condition=IfCondition(PythonExpression([
+            "'", LaunchConfiguration('keyboard'), "' == 'true' or '",
+            LaunchConfiguration('manual_explore'), "' == 'true'",
+        ])),
         parameters=[{
             'cmd_vel_topic': '/model/tilted_turtlebot/cmd_vel',
             'linear_speed': 0.16,
@@ -331,6 +368,14 @@ def generate_launch_description():
             description='Start the WASD keyboard drive node.',
         ),
         DeclareLaunchArgument(
+            'manual_explore',
+            default_value='false',
+            description=(
+                'Drive with WASD while keeping mapping active and disabling '
+                'automatic Nav2, frontier rotation, and visual goal selection.'
+            ),
+        ),
+        DeclareLaunchArgument(
             'pointcloud_frame',
             default_value='odom',
             description='Frame used for /tilted_pointcloud.',
@@ -395,6 +440,16 @@ def generate_launch_description():
             default_value='gemma4:26b',
             description='Local vision model name passed to the LLM API.',
         ),
+        DeclareLaunchArgument(
+            'llm_request_timeout_sec',
+            default_value='120.0',
+            description='Seconds to wait for the local vision LLM API response.',
+        ),
+        DeclareLaunchArgument(
+            'llm_debug_chunk_size',
+            default_value='2500',
+            description='Characters per /llm_exchange_debug_chunk message.',
+        ),
         gz_sim,
         robot_state_publisher,
         TimerAction(period=2.0, actions=[spawn_robot]),
@@ -403,6 +458,7 @@ def generate_launch_description():
         cmd_vel_watch_node,
         odom_tf_node,
         tilted_scan_node,
+        scan_beam_marker_node,
         octomap_cloud_node,
         octomap_server_node,
         frontier_extractor_node,
